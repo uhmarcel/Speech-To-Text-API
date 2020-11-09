@@ -27,10 +27,14 @@ public class FileStorageService {
         return applicationBucketUri;
     }
 
-    public Blob uploadFile(MultipartFile file) throws IOException {
+    public Blob uploadMultipartFile(MultipartFile file) throws IOException {
         String filename = file.getOriginalFilename();
         byte[] content = file.getBytes();
         return bucket.create(filename, content);
+    }
+
+    public Blob uploadTextFile(String filename, String content) {
+        return bucket.create(filename, content.getBytes());
     }
 
 }
