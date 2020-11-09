@@ -1,10 +1,14 @@
 package com.uhmarcel.speechtotext.services;
 
+import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 
 @Service
 public class FileStorageService {
@@ -13,17 +17,20 @@ public class FileStorageService {
     private Storage storage;
     private Bucket bucket;
 
-    public FileStorageService(@Value("${vars.gcs-application-bucket}") String applicationBucketUri) {
-        this.applicationBucketUri = applicationBucketUri;
+    public FileStorageService(@Value("${vars.gcs-application-bucket}") String applicationBucket) {
+        this.applicationBucketUri = String.format("gs://%s/", applicationBucket);
         this.storage = StorageOptions.getDefaultInstance().getService();
-        this.bucket = storage.get(applicationBucketUri);
+        this.bucket = storage.get(applicationBucket);
     }
 
     public String getApplicationBucketUri() {
         return applicationBucketUri;
     }
 
-    public Bucket getBucket() {
-        return bucket;
+    public Blob uploadFile(MultipartFile file) throws IOException {
+        String filename = file.getOriginalFilename();
+        byte[] content = file.getBytes();
+        return bucket.create(filename, content);
     }
+
 }

@@ -1,3 +1,9 @@
 vars:
   gcs-application-bucket: ${GCS_APPLICATION_BUCKET:}
 
+spring:
+  servlet:
+    multipart:
+      max-file-size: 1GB
+      max-request-size: 1GB
+

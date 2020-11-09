@@ -2,9 +2,15 @@ package com.uhmarcel.speechtotext.services;
 
 import com.google.api.gax.longrunning.OperationFuture;
 import com.google.cloud.speech.v1p1beta1.*;
+import com.google.cloud.storage.Blob;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.UnsupportedAudioFileException;
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -18,38 +24,44 @@ public class TranscriberService {
         this.fileStorageService = fileStorageService;
     }
 
-    public String transcribeFile(String filename, String language) throws UnsupportedAudioFileException, IOException, ExecutionException, InterruptedException {
-        String resourceUri = fileStorageService.getApplicationBucketUri() + filename;
-        RecognitionConfig.AudioEncoding encoding = getAudioEncoding(filename);
-        Integer sampleRate = 44100;
+    public String transcribeFile(MultipartFile file, String language) throws UnsupportedAudioFileException, IOException, ExecutionException, InterruptedException {
+        final String filename = file.getOriginalFilename();
+        final String resourceUri = fileStorageService.getApplicationBucketUri() + filename;
+        final RecognitionConfig.AudioEncoding encoding = getAudioEncoding(filename);
+        final Integer sampleRate = getAudioFrameRate(file);
+
+        Blob blob = fileStorageService.uploadFile(file);
 
         SpeechClient speech = SpeechClient.create();
 
         RecognitionAudio recognitionAudio = buildRecognitionAudio(resourceUri);
         RecognitionConfig recognitionConfig = buildRecognitionConfig(encoding, language, sampleRate);
 
-        OperationFuture<LongRunningRecognizeResponse, LongRunningRecognizeMetadata> recognizeResponse =
-            speech.longRunningRecognizeAsync(recognitionConfig, recognitionAudio);
+        OperationFuture<LongRunningRecognizeResponse, LongRunningRecognizeMetadata> recognizeResponse = speech.longRunningRecognizeAsync(recognitionConfig, recognitionAudio);
 
-        System.out.println("Found file - Starting recognition");
-
+        System.out.println("Starting recognition");
         while (!recognizeResponse.isDone()) {
             System.out.println("Waiting for response...");
             Thread.sleep(10000);
         }
+        System.out.println("Recognition done");
 
         List<SpeechRecognitionResult> recognizeResults = recognizeResponse.get().getResultsList();
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder transcription = new StringBuilder();
         for (SpeechRecognitionResult result : recognizeResults) {
             SpeechRecognitionAlternative alternative = result.getAlternativesList().get(0);
-            sb.append(alternative.getTranscript());
-            sb.append('\n');
+            transcription.append(alternative.getTranscript());
+            transcription.append('\n');
         }
+
         speech.close();
 
-        String output = sb.toString();
+        String output = transcription.toString();
         System.out.println(output);
+
+        blob.delete();
+
         return output;
     }
 
@@ -76,7 +88,7 @@ public class TranscriberService {
     }
 
     private RecognitionConfig.AudioEncoding getAudioEncoding(String filename) throws UnsupportedAudioFileException {
-        String[] tokens = filename.split(".");
+        String[] tokens = filename.split("\\.");
         if (tokens.length < 2) {
             throw new UnsupportedAudioFileException("Provided file has no file extension");
         }
@@ -92,5 +104,12 @@ public class TranscriberService {
         throw new UnsupportedAudioFileException(
             String.format("Unsupported file extension '%s'", fileExtension.toUpperCase())
         );
+    }
+
+    public int getAudioFrameRate(MultipartFile file) throws IOException, UnsupportedAudioFileException {
+        BufferedInputStream bufferedStream = new BufferedInputStream(file.getInputStream());
+        AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(bufferedStream);
+        AudioFormat audioFormat = audioInputStream.getFormat();
+        return (int) audioFormat.getFrameRate();
     }
 }
